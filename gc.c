@@ -18,7 +18,7 @@ typedef struct sObject {
     union {
         /* OBJ_INT */
         int32_t value;
-        
+
         /* OBJ_PAIR */
         struct {
             struct sObject *head;
@@ -30,6 +30,8 @@ typedef struct sObject {
 
 } Object;
 
+#define var (Object *)
+
 
 typedef struct {
     Object *first_object;
@@ -39,7 +41,9 @@ typedef struct {
     int32_t stack_size;
 } VM;
 
-void gc(VM *); 
+VM *vm = NULL;
+
+void gc(void);
 
 
 void
@@ -51,43 +55,47 @@ assert(int condition, const char *message)
     }
 }
 
-VM *
-new_vm() 
+void
+init_vm(void)
 {
-    VM *vm = (VM *)malloc(sizeof(VM));
+    if (vm != NULL) {
+        printf("vm is exist.");
+        return;
+    }
+
+    vm = (VM *)malloc(sizeof(VM));
     vm->stack_size = 0;
     vm->first_object = NULL;
     vm->total_objs = 0;
     vm->max_objs = INITIAL_GC_THRESHOLD;
-
-    return vm;
 }
 
-void delete_vm(VM *vm)
+void
+delete_vm(void)
 {
     vm->stack_size = 0;
-    gc(vm);
+    gc();
     free(vm);
 }
 
-void 
-push(VM *vm, Object *value)
+void
+push(Object *value)
 {
     assert(vm->stack_size < STACK_MAX, "Stack overflow!");
     vm->stack[vm->stack_size++] = value;
 }
 
 Object *
-pop(VM *vm)
+pop(void)
 {
     assert(vm->stack_size > 0, "Stack underflow!");
     return vm->stack[--vm->stack_size];
 }
 
 Object *
-new_object(VM *vm, object_type type)
+new_object(object_type type)
 {
-    if (vm->total_objs == vm->max_objs) gc(vm);
+    if (vm->total_objs == vm->max_objs) gc();
 
     Object *obj = (Object *)malloc(sizeof(Object));
     obj->type = type;
@@ -100,22 +108,22 @@ new_object(VM *vm, object_type type)
     return obj;
 }
 
-void 
-push_int(VM *vm, int32_t value)
+void
+push_int(int32_t value)
 {
-    Object *obj = new_object(vm, OBJ_INT);
+    Object *obj = new_object(OBJ_INT);
     obj->value = value;
-    push(vm, obj);
+    push(obj);
 }
 
 Object *
-push_pair(VM *vm)
+push_pair(void)
 {
-    Object *obj = new_object(vm, OBJ_PAIR);
-    obj->tail = pop(vm);
-    obj->head = pop(vm);
+    Object *obj = new_object(OBJ_PAIR);
+    obj->tail = pop();
+    obj->head = pop();
 
-    push(vm, obj);
+    push(obj);
     return obj;
 }
 
@@ -133,14 +141,14 @@ mark(Object *obj)
 }
 
 void
-mark_all(VM *vm)
+mark_all()
 {
     for (intmax_t i = 0; i < vm->stack_size; i++)
         mark(vm->stack[i]);
 }
 
 void
-sweep(VM *vm)
+sweep()
 {
     Object **obj = &vm->first_object;
 
@@ -150,7 +158,7 @@ sweep(VM *vm)
 
             Object *unreached = *obj;
             *obj = unreached->next;
-            
+
             free(unreached);
 
             vm->total_objs--;
@@ -162,23 +170,20 @@ sweep(VM *vm)
 }
 
 void
-gc(VM *vm)
+gc(void)
 {
-    mark_all(vm);
-    sweep(vm);
+    mark_all();
+    sweep();
 
     vm->max_objs = vm->total_objs * 2;
 }
 
 void test1()
 {
-    VM *vm = new_vm();
-    push_int(vm, 1);
-    push_int(vm, 100);
-    pop(vm);
+    push_int(1);
+    push_int(100);
 
-    gc(vm);
-    delete_vm(vm);
+    gc();
 }
 
 
@@ -186,29 +191,13 @@ void test1()
 
 
 
-// TODO: Initial vm as global variable
-
+// TODO: Use _Generic
 int main(void)
 {
+    init_vm();
     test1();
+
+
+    delete_vm();
     return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
