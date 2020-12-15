@@ -2,12 +2,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #define STACK_MAX 256
 #define INITIAL_GC_THRESHOLD 8
 
 typedef enum {
-    OBJ_INT,
+    OBJ_NUMBER,
+    OBJ_STRING,
     OBJ_PAIR
 } object_type;
 
@@ -16,8 +18,8 @@ typedef struct sObject {
     object_type type;
 
     union {
-        /* OBJ_INT */
-        int32_t value;
+        double number;
+        char *string;
 
         /* OBJ_PAIR */
         struct {
@@ -27,11 +29,16 @@ typedef struct sObject {
     };
 
     struct sObject *next;
-
 } Object;
 
-#define var (Object *)
+#define var Object *
 
+#define OBJECT(X) _Generic((X), \
+    int: new_number_object, \
+    float: new_number_object, \
+    double: new_number_object, \
+    char *: new_string_object \
+)(X)
 
 typedef struct {
     Object *first_object;
@@ -92,7 +99,7 @@ pop(void)
     return vm->stack[--vm->stack_size];
 }
 
-Object *
+static Object *
 new_object(object_type type)
 {
     if (vm->total_objs == vm->max_objs) gc();
@@ -105,15 +112,46 @@ new_object(object_type type)
     vm->first_object = obj;
     vm->total_objs++;
 
+    push(obj);
+    return obj;
+}
+
+static Object *
+new_number_object(double number)
+{
+    Object *obj = new_object(OBJ_NUMBER);
+    obj->number = number;
+
+    return obj;
+}
+
+static Object *
+new_string_object(char *string)
+{
+    Object *obj = new_object(OBJ_STRING);
+    int len = strlen(string) + 1;
+    char *str = malloc(len);
+    strncpy(str, string, len);
+
+    obj->string = str;
+
     return obj;
 }
 
 void
-push_int(int32_t value)
+delete_object(Object *obj)
 {
-    Object *obj = new_object(OBJ_INT);
-    obj->value = value;
-    push(obj);
+    object_type type = obj->type;
+
+    switch(type) {
+    case OBJ_NUMBER:
+        free(obj);
+        break;
+    case OBJ_STRING:
+        free(obj->string);
+        free(obj);
+        break;
+    }
 }
 
 Object *
@@ -123,7 +161,6 @@ push_pair(void)
     obj->tail = pop();
     obj->head = pop();
 
-    push(obj);
     return obj;
 }
 
@@ -154,12 +191,10 @@ sweep()
 
     while (*obj) {
         if ((*obj)->marked == false) {
-            printf("Object is unreachable, value: %d\n", (*obj)->value);
-
             Object *unreached = *obj;
             *obj = unreached->next;
 
-            free(unreached);
+            delete_object(unreached);
 
             vm->total_objs--;
         } else {
@@ -180,23 +215,18 @@ gc(void)
 
 void test1()
 {
-    push_int(1);
-    push_int(100);
+    var x = OBJECT(100);
+    var y = OBJECT("Wilson");
+    var z = OBJECT(99.99);
 
     gc();
 }
 
-
-
-
-
-
-// TODO: Use _Generic
 int main(void)
 {
     init_vm();
-    test1();
 
+    test1();
 
     delete_vm();
     return 0;
